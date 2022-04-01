@@ -1,0 +1,74 @@
+image: node:12.16.1
+
+definitions:
+  services:
+    docker:
+      memory: 8048
+
+pipelines:
+  tags:
+    '*':
+      - step:
+          caches:
+            - node
+          image: node:12.16.1
+
+          script:
+            - npm install
+            - npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/build/intermediates/res/merged/release/
+
+      - parallel:
+          - step:
+              image: mingc/android-build-box:latest
+              caches:
+                - node
+
+              script:
+                # desenv
+                - export ENVFILE=.env.development
+                - cd ./android
+                - rm -rf app/src/main/res/drawable-* && rm -rf app/src/main/res/raw/app.json
+                - chmod +x gradlew
+
+                - echo "Building APK Desenv"
+                - ./gradlew assembleRelease
+                - ssh ubuntu@ftp.intmed.com.br sudo mkdir -m 770 -p /home/hapvida/batimentos/app/v$BITBUCKET_TAG/desenv
+                - scp DESENV-release.apk ubuntu@ftp.intmed.com.br:/home/hapvida/batimentos/app/v$BITBUCKET_TAG/desenv
+
+          - step:
+              image: mingc/android-build-box:latest
+              caches:
+                - node
+
+              script:
+                # homolog
+                - export ENVFILE=.env.homolog
+                - cd ./android
+                - rm -rf app/src/main/res/drawable-* && rm -rf app/src/main/res/raw/app.json
+                - chmod +x gradlew
+
+                - echo "Building APK Homolog"
+                - ./gradlew assembleRelease
+                - ssh ubuntu@ftp.intmed.com.br sudo mkdir -m 770 -p /home/hapvida/batimentos/app/v$BITBUCKET_TAG/homolog
+                - scp HOMOLOG-release.apk ubuntu@ftp.intmed.com.br:/home/hapvida/batimentos/app/v$BITBUCKET_TAG/homolog
+
+          - step:
+              image: mingc/android-build-box:latest
+              caches:
+                - node
+
+              script:
+                # production
+                - export ENVFILE=.env.production
+                - cd ./android
+                - rm -rf app/src/main/res/drawable-* && rm -rf app/src/main/res/raw/app.json
+                - chmod +x gradlew
+
+                - echo "Building APK Production"
+                - ./gradlew assembleRelease
+                - ssh ubuntu@ftp.intmed.com.br sudo mkdir -m 770 -p /home/hapvida/batimentos/app/v$BITBUCKET_TAG/production
+                - scp PROD-release.apk ubuntu@ftp.intmed.com.br:/home/hapvida/batimentos/app/v$BITBUCKET_TAG/production
+      - step:
+          script:
+            - ssh ubuntu@ftp.intmed.com.br sudo chown -R hapvida:hapvida /home/hapvida/batimentos/app/v$BITBUCKET_TAG/
+            - ssh ubuntu@ftp.intmed.com.br sudo chmod -R 770 /home/hapvida/batimentos/app/v$BITBUCKET_TAG/
